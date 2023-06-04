@@ -30,21 +30,29 @@ func (n *node) matchChildren(part string) []*node {
 	return nodes
 }
 
+// 插入节点
 func (n *node) insert(pattern string, parts []string, height int) {
-	if len(parts) == height {
+	// 所有part匹配完成,代表插入结束
+	if height == len(parts) {
 		n.pattern = pattern
 		return
 	}
 
+	// 匹配子节点
 	part := parts[height]
 	child := n.matchChild(part)
+
+	// 子节点不存在则创建
 	if child == nil {
-		child = &node{part: part, isWild: part[0] == ':' || part[0] == '*'}
+		child = &node{part: part, isWild: part == ":" || part == "*"}
 		n.children = append(n.children, child)
 	}
+
+	// 递归匹配直到所有part插入完毕
 	child.insert(pattern, parts, height+1)
 }
 
+// 搜索对应的路由
 func (n *node) search(parts []string, height int) *node {
 	if len(parts) == height || strings.HasPrefix(n.part, "*") {
 		if n.pattern == "" {
