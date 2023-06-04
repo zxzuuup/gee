@@ -15,6 +15,9 @@ type Context struct {
 	Path       string
 	Params     map[string]string
 	StatusCode int
+	// 存储中间件
+	handlers []HandlerFunc
+	index    int
 }
 
 func (c *Context) GetParam(key string) string {
@@ -28,6 +31,15 @@ func newContext(w http.ResponseWriter, req *http.Request) *Context {
 		Req:    req,
 		Method: req.Method,
 		Path:   req.URL.Path,
+		index:  -1,
+	}
+}
+
+func (c *Context) Next() {
+	c.index++
+	s := len(c.handlers)
+	for ; c.index < s; c.index++ {
+		c.handlers[c.index](c)
 	}
 }
 
@@ -81,4 +93,9 @@ func (c *Context) HTML(code int, html string) {
 	if err != nil {
 		http.Error(c.Writer, err.Error(), 500)
 	}
+}
+
+func (c *Context) Fail(code int, err string) {
+	c.index = len(c.handlers)
+	c.JSON(code, H{"message": err})
 }
