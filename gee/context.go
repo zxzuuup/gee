@@ -9,28 +9,28 @@ import (
 type H map[string]interface{}
 
 type Context struct {
-	Writer     http.ResponseWriter
-	Req        *http.Request
-	Method     string
-	Path       string
-	Params     map[string]string
+	// origin objects
+	Writer http.ResponseWriter
+	Req    *http.Request
+	// request info
+	Path   string
+	Method string
+	Params map[string]string
+	// response info
 	StatusCode int
-	// 存储中间件
+	// middleware
 	handlers []HandlerFunc
 	index    int
-}
-
-func (c *Context) GetParam(key string) string {
-	value, _ := c.Params[key]
-	return value
+	// engine pointer
+	engine *Engine
 }
 
 func newContext(w http.ResponseWriter, req *http.Request) *Context {
 	return &Context{
-		Writer: w,
-		Req:    req,
-		Method: req.Method,
 		Path:   req.URL.Path,
+		Method: req.Method,
+		Req:    req,
+		Writer: w,
 		index:  -1,
 	}
 }
@@ -43,15 +43,25 @@ func (c *Context) Next() {
 	}
 }
 
-func (c *Context) GetPostForm(key string) string {
+func (c *Context) Fail(code int, err string) {
+	c.index = len(c.handlers)
+	c.JSON(code, H{"message": err})
+}
+
+func (c *Context) Param(key string) string {
+	value, _ := c.Params[key]
+	return value
+}
+
+func (c *Context) PostForm(key string) string {
 	return c.Req.FormValue(key)
 }
 
-func (c *Context) GetQuery(key string) string {
+func (c *Context) Query(key string) string {
 	return c.Req.URL.Query().Get(key)
 }
 
-func (c *Context) SetStatus(code int) {
+func (c *Context) Status(code int) {
 	c.StatusCode = code
 	c.Writer.WriteHeader(code)
 }
@@ -62,16 +72,13 @@ func (c *Context) SetHeader(key string, value string) {
 
 func (c *Context) String(code int, format string, values ...interface{}) {
 	c.SetHeader("Content-Type", "text/plain")
-	c.SetStatus(code)
-	_, err := c.Writer.Write([]byte(fmt.Sprintf(format, values...)))
-	if err != nil {
-		http.Error(c.Writer, err.Error(), 500)
-	}
+	c.Status(code)
+	c.Writer.Write([]byte(fmt.Sprintf(format, values...)))
 }
 
 func (c *Context) JSON(code int, obj interface{}) {
 	c.SetHeader("Content-Type", "application/json")
-	c.SetStatus(code)
+	c.Status(code)
 	encoder := json.NewEncoder(c.Writer)
 	if err := encoder.Encode(obj); err != nil {
 		http.Error(c.Writer, err.Error(), 500)
@@ -79,23 +86,16 @@ func (c *Context) JSON(code int, obj interface{}) {
 }
 
 func (c *Context) Data(code int, data []byte) {
-	c.SetStatus(code)
-	_, err := c.Writer.Write(data)
-	if err != nil {
-		http.Error(c.Writer, err.Error(), 500)
-	}
+	c.Status(code)
+	c.Writer.Write(data)
 }
 
-func (c *Context) HTML(code int, html string) {
+// HTML template render
+// refer https://golang.org/pkg/html/template/
+func (c *Context) HTML(code int, name string, data interface{}) {
 	c.SetHeader("Content-Type", "text/html")
-	c.SetStatus(code)
-	_, err := c.Writer.Write([]byte(html))
-	if err != nil {
-		http.Error(c.Writer, err.Error(), 500)
+	c.Status(code)
+	if err := c.engine.htmlTemplates.ExecuteTemplate(c.Writer, name, data); err != nil {
+		c.Fail(500, err.Error())
 	}
-}
-
-func (c *Context) Fail(code int, err string) {
-	c.index = len(c.handlers)
-	c.JSON(code, H{"message": err})
 }
